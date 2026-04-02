@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SunaO — Audiobook Maker</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg: #F7F5F0;
+  --bg2: #EFEDE6;
+  --text: #1C1917;
+  --muted: #78716C;
+  --accent: #C2693A;
+  --accent-light: #E8C4A0;
+  --border: #D6D0C4;
+  --white: #FDFCFB;
+  --green: #4CAF50;
+  --red: #E53E3E;
+  --font-d: 'Fraunces', Georgia, serif;
+  --font-b: 'DM Sans', -apple-system, sans-serif;
+  --r: 10px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-b); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 15px; line-height: 1.6; }
+
+.app { max-width: 780px; margin: 0 auto; padding: 24px 16px; }
+
+/* HEADER */
+header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+.logo { font-family: var(--font-d); font-size: 26px; font-weight: 400; font-style: italic; letter-spacing: -0.5px; }
+.logo span { color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.api-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; padding: 5px 10px; border: 1px solid var(--border); border-radius: 20px; background: var(--white); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background .3s; flex-shrink: 0; }
+.dot.ok { background: var(--green); }
+.dot.err { background: var(--red); }
+.dot.checking { background: var(--accent-light); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+.icon-btn { background: none; border: 1px solid var(--border); border-radius: var(--r); padding: 6px 11px; cursor: pointer; color: var(--muted); font-size: 14px; transition: all .2s; font-family: var(--font-b); }
+.icon-btn:hover { background: var(--bg2); color: var(--text); }
+
+/* UPLOAD */
+#uploadSection { animation: fadeIn .3s ease; }
+#uploadZone { border: 2px dashed var(--border); border-radius: 16px; padding: 60px 24px; text-align: center; cursor: pointer; transition: all .2s; background: var(--white); }
+#uploadZone:hover, #uploadZone.over { border-color: var(--accent); background: #FFF8F4; }
+.up-icon { font-size: 42px; display: block; margin-bottom: 14px; }
+.up-title { font-family: var(--font-d); font-size: 22px; font-weight: 400; margin-bottom: 8px; }
+.up-sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+.fmt-tags { display: flex; gap: 7px; justify-content: center; flex-wrap: wrap; }
+.fmt { background: var(--bg2); border: 1px solid var(--border); border-radius: 5px; padding: 3px 10px; font-size: 11px; color: var(--muted); font-family: monospace; letter-spacing: .04em; }
+
+/* PROGRESS */
+.prog-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--r); padding: 28px 24px; text-align: center; }
+.prog-title { font-weight: 500; margin-bottom: 16px; font-size: 15px; }
+.prog-track { background: var(--bg2); border-radius: 99px; height: 6px; overflow: hidden; margin-bottom: 10px; }
+.prog-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; width: 0%; }
+.prog-lbl { font-size: 12px; color: var(--muted); }
+
+/* BOOK INFO */
+.book-meta { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; padding: 16px 20px; background: var(--white); border: 1px solid var(--border); border-radius: var(--r); }
+.meta-item { display: flex; flex-direction: column; }
+.meta-val { font-family: var(--font-d); font-size: 22px; font-weight: 400; color: var(--text); }
+.meta-lbl { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+/* TABS */
+.tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.tab { background: none; border: none; padding: 10px 16px; cursor: pointer; font-family: var(--font-b); font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .2s; }
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.tab-pane { display: none; }
+.tab-pane.on { display: block; }
+
+/* TEXT TAB */
+.txt-meta { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
+#textEditor { width: 100%; min-height: 380px; border: 1px solid var(--border); border-radius: var(--r); padding: 18px; font-family: var(--font-b); font-size: 15px; line-height: 1.85; color: var(--text); background: var(--white); resize: vertical; outline: none; transition: border-color .2s; }
+#textEditor:focus { border-color: var(--accent); }
+.txt-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* BUTTONS */
+.btn { background: var(--accent); color: #fff; border: none; border-radius: var(--r); padding: 10px 20px; font-family: var(--font-b); font-size: 14px; font-weight: 500; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 7px; }
+.btn:hover { opacity: .87; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.btn-o { background: none; color: var(--text); border: 1px solid var(--border); }
+.btn-o:hover { background: var(--bg2); border-color: var(--muted); opacity: 1; }
+.btn-s { padding: 7px 14px; font-size: 13px; }
+
+/* LISTEN TAB */
+.player { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 24px 22px; margin-bottom: 20px; }
+.pl-name { font-family: var(--font-d); font-size: 17px; font-weight: 400; margin-bottom: 3px; }
+.pl-sub { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+.audio-bar { background: var(--bg2); border-radius: 99px; height: 4px; cursor: pointer; position: relative; margin-bottom: 16px; }
+.audio-fill { height: 100%; background: var(--accent); border-radius: 99px; pointer-events: none; transition: width .1s linear; }
+.pl-ctrl { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 18px; }
+.cb { background: none; border: none; cursor: pointer; color: var(--muted); padding: 8px; border-radius: 50%; transition: all .2s; display: flex; align-items: center; justify-content: center; font-size: 18px; width: 38px; height: 38px; }
+.cb:hover { background: var(--bg2); color: var(--text); }
+.cb.big { background: var(--accent); color: #fff; font-size: 22px; width: 52px; height: 52px; }
+.cb.big:hover { opacity: .87; background: var(--accent); }
+.sp-row { display: flex; align-items: center; gap: 7px; justify-content: center; flex-wrap: wrap; }
+.sp-lbl { font-size: 12px; color: var(--muted); }
+.sp { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer; color: var(--muted); transition: all .2s; font-family: var(--font-b); }
+.sp:hover, .sp.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* VOICE SELECT */
+.voice-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.voice-row label { font-size: 12px; color: var(--muted); }
+select { border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; font-size: 13px; font-family: var(--font-b); color: var(--text); background: var(--white); outline: none; cursor: pointer; }
+select:focus { border-color: var(--accent); }
+
+/* SECTIONS */
+.sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+.sec-hdr-lbl { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.sec-list { display: flex; flex-direction: column; gap: 7px; }
+.sec-item { background: var(--white); border: 1px solid var(--border); border-radius: var(--r); padding: 11px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: all .2s; }
+.sec-item:hover { border-color: var(--accent-light); background: #FFF8F4; }
+.sec-item.on { border-color: var(--accent); background: #FFF8F4; }
+.sec-num { font-size: 11px; color: var(--muted); min-width: 20px; flex-shrink: 0; }
+.sec-preview { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sec-badge { font-size: 11px; min-width: 70px; text-align: right; color: var(--muted); flex-shrink: 0; }
+.sec-badge.ready { color: var(--green); }
+.sec-badge.loading { color: var(--accent); }
+.sec-badge.err { color: var(--red); }
+.sec-acts { display: flex; gap: 5px; flex-shrink: 0; }
+
+/* AI TAB */
+.quick { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
+.qbtn { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text); transition: all .2s; font-family: var(--font-b); }
+.qbtn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chat-wrap { display: flex; flex-direction: column; }
+.chat-log { min-height: 320px; max-height: 400px; overflow-y: auto; padding: 14px; background: var(--white); border: 1px solid var(--border); border-radius: var(--r); display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.msg { max-width: 86%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
+.msg.u { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.msg.a { background: var(--bg2); color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px; }
+.msg.typing { color: var(--muted); font-style: italic; }
+.chat-inp-row { display: flex; gap: 8px; }
+#chatInp { flex: 1; border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; font-family: var(--font-b); font-size: 14px; outline: none; background: var(--white); color: var(--text); transition: border-color .2s; }
+#chatInp:focus { border-color: var(--accent); }
+
+/* FULLSCREEN */
+#fsOverlay { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 1000; flex-direction: column; }
+#fsOverlay.on { display: flex; }
+.fs-top { padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px; }
+.fs-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; }
+.fs-book { font-family: var(--font-d); font-size: 26px; font-weight: 400; margin-bottom: 6px; text-align: center; color: var(--text); }
+.fs-sec { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+.fs-text { font-size: 19px; line-height: 2; text-align: center; max-width: 580px; color: var(--text); margin-bottom: 44px; }
+.fs-ctrl { display: flex; align-items: center; gap: 18px; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 24px; right: 24px; background: #1C1917; color: #fff; padding: 11px 18px; border-radius: var(--r); font-size: 13px; z-index: 2000; opacity: 0; transform: translateY(8px); transition: all .25s; max-width: 300px; }
+.toast.on { opacity: 1; transform: translateY(0); }
+
+/* UTILS */
+.hidden { display: none !important; }
+hr.div { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+.empty { text-align: center; padding: 36px 20px; color: var(--muted); font-size: 14px; }
+.empty-ico { font-size: 30px; display: block; margin-bottom: 10px; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none} }
+
+@media(max-width:560px){
+  .pl-ctrl { gap: 8px; }
+  .cb { width: 34px; height: 34px; font-size: 15px; }
+  .cb.big { width: 48px; height: 48px; font-size: 20px; }
+  .book-meta { gap: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">Sun<span>aO</span></div>
+    <div class="header-right">
+      <div class="api-status" onclick="checkAPI()" title="Click to recheck">
+        <div class="dot checking" id="dot"></div>
+        <span id="dotTxt">checking…</span>
+      </div>
+      <button class="icon-btn" onclick="openFS()" title="Fullscreen">⛶</button>
+      <button class="icon-btn" onclick="newBook()">↩ New</button>
+    </div>
+  </header>
+
+  <!-- UPLOAD -->
+  <div id="uploadSec">
+    <div id="uploadZone"
+      onclick="document.getElementById('fi').click()"
+      ondragover="ev.preventDefault();this.classList.add('over')"
+      ondragleave="this.classList.remove('over')"
+      ondrop="this.classList.remove('over');ev.preventDefault();doFile(ev.dataTransfer.files[0])">
+      <span class="up-icon">📚</span>
+      <div class="up-title">Drop your book here</div>
+      <div class="up-sub">or click to browse</div>
+      <div class="fmt-tags">
+        <span class="fmt">PDF</span>
+        <span class="fmt">DOCX</span>
+        <span class="fmt">TXT</span>
+        <span class="fmt">EPUB</span>
+        <span class="fmt">JPG</span>
+        <span class="fmt">PNG</span>
+        <span class="fmt">WEBP</span>
+      </div>
+    </div>
+    <input type="file" id="fi" accept=".pdf,.docx,.doc,.txt,.epub,.jpg,.jpeg,.png,.webp" class="hidden" onchange="doFile(this.files[0])">
+  </div>
+
+  <!-- PROCESSING -->
+  <div id="procSec" class="hidden">
+    <div class="prog-card">
+      <div class="prog-title" id="progTitle">Processing your book…</div>
+      <div class="prog-track"><div class="prog-fill" id="progBar"></div></div>
+      <div class="prog-lbl" id="progLbl">Please wait…</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="mainSec" class="hidden">
+    <div class="book-meta" id="bookMeta"></div>
+
+    <div class="tabs">
+      <button class="tab on" onclick="showTab('text',this)">📖 Text</button>
+      <button class="tab" onclick="showTab('listen',this)">🎧 Listen</button>
+      <button class="tab" onclick="showTab('ask',this)">🤖 Ask AI</button>
+    </div>
+
+    <!-- TEXT -->
+    <div class="tab-pane on" id="tab-text">
+      <div class="txt-meta">
+        <span id="wc">0 words</span>
+        <span id="cc">0 chars</span>
+        <span id="rt">~0 min read</span>
+        <span id="at">~0 min audio</span>
+      </div>
+      <textarea id="textEditor" placeholder="Extracted text will appear here. You can edit it before generating audio."></textarea>
+      <div class="txt-actions">
+        <button class="btn btn-s" onclick="prepareAudio()">🎙 Prepare Audio Sections</button>
+        <button class="btn btn-o btn-s" onclick="copyTxt()">Copy</button>
+        <button class="btn btn-o btn-s" onclick="dlTxt()">↓ .txt</button>
+      </div>
+    </div>
+
+    <!-- LISTEN -->
+    <div class="tab-pane" id="tab-listen">
+      <div class="player">
+        <div class="pl-name" id="plName">Ready to listen</div>
+        <div class="pl-sub" id="plSub">Prepare audio sections from Text tab first</div>
+        <div class="audio-bar" id="aBar" onclick="seekAudio(event)">
+          <div class="audio-fill" id="aFill" style="width:0%"></div>
+        </div>
+        <div class="pl-ctrl">
+          <button class="cb" onclick="prevSec()" title="Prev section">⏮</button>
+          <button class="cb" onclick="skip(-10)" title="-10s">↩</button>
+          <button class="cb big" id="playBtn" onclick="togglePlay()">▶</button>
+          <button class="cb" onclick="skip(10)" title="+10s">↪</button>
+          <button class="cb" onclick="nextSec()" title="Next section">⏭</button>
+        </div>
+        <div class="sp-row">
+          <span class="sp-lbl">Speed:</span>
+          <button class="sp" onclick="setSpd(0.5)">0.5×</button>
+          <button class="sp" onclick="setSpd(0.75)">0.75×</button>
+          <button class="sp on" onclick="setSpd(1)">1×</button>
+          <button class="sp" onclick="setSpd(1.25)">1.25×</button>
+          <button class="sp" onclick="setSpd(1.5)">1.5×</button>
+          <button class="sp" onclick="setSpd(2)">2×</button>
+        </div>
+        <div class="voice-row">
+          <label>Voice:</label>
+          <select id="voiceSel">
+            <option value="Arya-PlayAI">Arya (Female)</option>
+            <option value="Fritz-PlayAI">Fritz (Male)</option>
+            <option value="Celeste-PlayAI">Celeste (Female)</option>
+            <option value="Orion-PlayAI">Orion (Male)</option>
+            <option value="Calum-PlayAI">Calum (Male)</option>
+            <option value="Ava-PlayAI">Ava (Female)</option>
+          </select>
+          <span style="font-size:11px;color:var(--muted)">⚠ Hindi quality varies by voice — try a few!</span>
+        </div>
+      </div>
+
+      <div id="secWrap" class="hidden">
+        <div class="sec-hdr">
+          <span class="sec-hdr-lbl" id="secCount">Sections</span>
+          <div style="display:flex;gap:7px;">
+            <button class="btn btn-o btn-s" onclick="genAll()">⚡ Generate All</button>
+            <button class="btn btn-o btn-s" onclick="dlAll()">↓ Download All</button>
+          </div>
+        </div>
+        <div class="sec-list" id="secList"></div>
+      </div>
+
+      <div id="listenEmpty" class="empty">
+        <span class="empty-ico">🎙</span>
+        Go to <strong>Text</strong> tab → click <strong>Prepare Audio Sections</strong>
+      </div>
+    </div>
+
+    <!-- ASK AI -->
+    <div class="tab-pane" id="tab-ask">
+      <div class="quick">
+        <button class="qbtn" onclick="qa('Summarize this book in detail')">📝 Summary</button>
+        <button class="qbtn" onclick="qa('How many chapters are there and what are their names?')">📑 Chapters</button>
+        <button class="qbtn" onclick="qa('What are the total word count and estimated pages of this book?')">📊 Stats</button>
+        <button class="qbtn" onclick="qa('What is the main theme and message of this book?')">💡 Main Theme</button>
+        <button class="qbtn" onclick="qa('Who are the main characters or key people mentioned in this book?')">👤 Characters</button>
+        <button class="qbtn" onclick="qa('Give me a chapter-by-chapter summary')">📖 Ch. Summary</button>
+      </div>
+      <div class="chat-wrap">
+        <div class="chat-log" id="chatLog">
+          <div class="msg a">नमस्ते! Upload your book and I'll answer anything about it 📚</div>
+        </div>
+        <div class="chat-inp-row">
+          <input type="text" id="chatInp" placeholder="Ask anything about the book…" onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="btn btn-s" onclick="sendChat()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN -->
+<div id="fsOverlay">
+  <div class="fs-top">
+    <div class="logo">Sun<span style="color:var(--accent)">aO</span></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div class="sp-row">
+        <button class="sp" onclick="setSpd(0.5)">0.5×</button>
+        <button class="sp" onclick="setSpd(0.75)">0.75×</button>
+        <button class="sp on" onclick="setSpd(1)">1×</button>
+        <button class="sp" onclick="setSpd(1.25)">1.25×</button>
+        <button class="sp" onclick="setSpd(1.5)">1.5×</button>
+        <button class="sp" onclick="setSpd(2)">2×</button>
+      </div>
+      <button class="icon-btn" onclick="closeFS()">✕ Exit</button>
+    </div>
+  </div>
+  <div class="fs-body">
+    <div class="fs-book" id="fsBook">SunaO</div>
+    <div class="fs-sec" id="fsSec">—</div>
+    <div class="fs-text" id="fsTxt">No audio playing. Prepare and play a section first.</div>
+    <div class="fs-ctrl">
+      <button class="cb" style="width:48px;height:48px;font-size:22px" onclick="prevSec()">⏮</button>
+      <button class="cb" style="width:42px;height:42px;font-size:18px" onclick="skip(-10)">↩</button>
+      <button class="cb big" id="fsPBtn" style="width:62px;height:62px;font-size:26px" onclick="togglePlay()">▶</button>
+      <button class="cb" style="width:42px;height:42px;font-size:18px" onclick="skip(10)">↪</button>
+      <button class="cb" style="width:48px;height:48px;font-size:22px" onclick="nextSec()">⏭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<audio id="aud" onended="onEnded()" ontimeupdate="onTick()"></audio>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG — Replace API key before deploying
+// ─────────────────────────────────────────────
+const API_KEY    = 'YOUR_GROQ_API_KEY_HERE';
+const TTS_URL    = 'https://api.groq.com/openai/v1/audio/speech';
+const CHAT_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+const TTS_MODEL  = 'playai-tts';
+const CHAT_MODEL = 'llama-3.3-70b-versatile';
+const CHUNK_SZ   = 1200; // chars per TTS request
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let bookText = '';
+let fileName = '';
+let sections = [];   // [{text, blob, url, status:'pending'|'loading'|'ready'|'err'}]
+let curIdx   = -1;
+let playing  = false;
+let speed    = 1;
+const aud    = document.getElementById('aud');
+
+// ─────────────────────────────────────────────
+// API STATUS
+// ─────────────────────────────────────────────
+async function checkAPI() {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('dotTxt');
+  dot.className = 'dot checking';
+  txt.textContent = 'checking…';
+  try {
+    const r = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: CHAT_MODEL, max_tokens: 1, messages: [{ role:'user', content:'hi' }] })
+    });
+    if (r.ok) { dot.className = 'dot ok'; txt.textContent = 'API ready'; }
+    else { throw new Error(r.status); }
+  } catch {
+    dot.className = 'dot err';
+    txt.textContent = 'API error';
+  }
+}
+checkAPI();
+setInterval(checkAPI, 90000);
+
+// ─────────────────────────────────────────────
+// DRAG & DROP EVENTS (fix inline handler scope)
+// ─────────────────────────────────────────────
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('over'); doFile(e.dataTransfer.files[0]); });
+
+// ─────────────────────────────────────────────
+// FILE PROCESSING
+// ─────────────────────────────────────────────
+async function doFile(file) {
+  if (!file) return;
+  fileName = file.name;
+  setView('proc');
+  const ext = file.name.split('.').pop().toLowerCase();
+  try {
+    if      (ext === 'pdf')                            bookText = await fromPDF(file);
+    else if (ext === 'docx' || ext === 'doc')          bookText = await fromDOCX(file);
+    else if (ext === 'txt')                            bookText = await fromTXT(file);
+    else if (ext === 'epub')                           bookText = await fromEPUB(file);
+    else if (['jpg','jpeg','png','webp'].includes(ext)) bookText = await fromImg(file);
+    else { toast('Unsupported format'); setView('upload'); return; }
+
+    if (!bookText || bookText.trim().length < 20) {
+      toast('Could not extract text — try a cleaner scan'); setView('upload'); return;
+    }
+    document.getElementById('textEditor').value = bookText;
+    updateMeta();
+    updateBookMeta();
+    setView('main');
+  } catch(e) {
+    console.error(e);
+    toast('Error: ' + e.message);
+    setView('upload');
+  }
+}
+
+// ─────────────────────────────────────────────
+// EXTRACTORS
+// ─────────────────────────────────────────────
+async function fromPDF(file) {
+  prog('Reading PDF…', 10);
+  const ab  = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  const N   = pdf.numPages;
+
+  // Check if text-based
+  prog('Checking PDF type…', 15);
+  let sample = '';
+  for (let i = 1; i <= Math.min(N, 3); i++) {
+    const pg   = await pdf.getPage(i);
+    const cont = await pg.getTextContent();
+    sample    += cont.items.map(s => s.str).join(' ');
+  }
+
+  if (sample.trim().length > 100) {
+    // Text-based PDF
+    let out = '';
+    for (let i = 1; i <= N; i++) {
+      prog(`Extracting page ${i}/${N}…`, 15 + (i/N)*80);
+      const pg   = await pdf.getPage(i);
+      const cont = await pg.getTextContent();
+      out       += cont.items.map(s => s.str).join(' ') + '\n\n';
+    }
+    prog('Done!', 100);
+    return out.trim();
+  }
+
+  // OCR path
+  prog('Starting OCR engine (Hindi+English)…', 20);
+  const worker = await Tesseract.createWorker(['hin','eng']);
+  let out = '';
+  for (let i = 1; i <= N; i++) {
+    prog(`OCR: page ${i} of ${N}…`, 20 + (i/N)*75);
+    const pg       = await pdf.getPage(i);
+    const vp       = pg.getViewport({ scale: 2.0 });
+    const canvas   = document.createElement('canvas');
+    canvas.width   = vp.width;
+    canvas.height  = vp.height;
+    await pg.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    const res = await worker.recognize(canvas);
+    out      += res.data.text + '\n\n';
+  }
+  await worker.terminate();
+  prog('Done!', 100);
+  return out.trim();
+}
+
+async function fromDOCX(file) {
+  prog('Reading DOCX…', 40);
+  const ab  = await file.arrayBuffer();
+  const res = await mammoth.extractRawText({ arrayBuffer: ab });
+  prog('Done!', 100);
+  return res.value.trim();
+}
+
+async function fromTXT(file) {
+  prog('Reading file…', 50);
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = e => { prog('Done!', 100); res(e.target.result); };
+    r.onerror = rej;
+    r.readAsText(file, 'UTF-8');
+  });
+}
+
+async function fromImg(file) {
+  prog('Setting up OCR…', 20);
+  const worker = await Tesseract.createWorker(['hin','eng']);
+  prog('Recognising text…', 55);
+  const res = await worker.recognize(file);
+  await worker.terminate();
+  prog('Done!', 100);
+  return res.data.text.trim();
+}
+
+async function fromEPUB(file) {
+  prog('Reading EPUB…', 15);
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  prog('Parsing structure…', 30);
+  let opfPath = '';
+  const containerXml = await zip.file('META-INF/container.xml')?.async('string');
+  if (containerXml) {
+    const m = containerXml.match(/full-path="([^"]+\.opf)"/);
+    if (m) opfPath = m[1];
+  }
+  const opfDir = opfPath.split('/').slice(0,-1).join('/');
+  const htmlPaths = [];
+  if (opfPath) {
+    const opf = await zip.file(opfPath)?.async('string') || '';
+    for (const m of opf.matchAll(/href="([^"]+\.x?html?)"/gi))
+      htmlPaths.push(opfDir ? `${opfDir}/${m[1]}` : m[1]);
+  }
+  if (!htmlPaths.length)
+    zip.forEach(p => { if (/\.x?html?$/i.test(p)) htmlPaths.push(p); });
+
+  let out = '';
+  for (let i = 0; i < htmlPaths.length; i++) {
+    prog(`Reading chapter ${i+1}/${htmlPaths.length}…`, 35 + (i/htmlPaths.length)*60);
+    const html = await zip.file(htmlPaths[i])?.async('string');
+    if (html) { const d = document.createElement('div'); d.innerHTML = html; out += d.innerText + '\n\n'; }
+  }
+  prog('Done!', 100);
+  return out.trim();
+}
+
+// ─────────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────────
+function setView(v) {
+  document.getElementById('uploadSec').classList.toggle('hidden', v !== 'upload');
+  document.getElementById('procSec').classList.toggle('hidden',   v !== 'proc');
+  document.getElementById('mainSec').classList.toggle('hidden',   v !== 'main');
+}
+
+function prog(lbl, pct) {
+  document.getElementById('progBar').style.width  = pct + '%';
+  document.getElementById('progLbl').textContent  = lbl;
+}
+
+function showTab(name, el) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
+  if (el) el.classList.add('on');
+  document.getElementById('tab-' + name).classList.add('on');
+}
+
+function updateMeta() {
+  const t  = document.getElementById('textEditor').value;
+  const w  = t.trim().split(/\s+/).filter(Boolean).length;
+  const c  = t.length;
+  const rm = Math.ceil(w / 200);
+  const am = Math.ceil(w / 140);
+  document.getElementById('wc').textContent = w.toLocaleString() + ' words';
+  document.getElementById('cc').textContent = c.toLocaleString() + ' chars';
+  document.getElementById('rt').textContent = '~' + rm + ' min read';
+  document.getElementById('at').textContent = '~' + am + ' min audio';
+}
+
+function updateBookMeta() {
+  const t  = document.getElementById('textEditor').value;
+  const w  = t.trim().split(/\s+/).filter(Boolean).length;
+  const ch = (t.match(/अध्याय|Chapter\s+\d+|CHAPTER\s+\d+/gi) || []).length;
+  const pg = Math.ceil(w / 250);
+  const am = Math.ceil(w / 140);
+  document.getElementById('bookMeta').innerHTML = `
+    <div class="meta-item"><div class="meta-val">${w.toLocaleString()}</div><div class="meta-lbl">Words</div></div>
+    <div class="meta-item"><div class="meta-val">~${pg}</div><div class="meta-lbl">Est. Pages</div></div>
+    <div class="meta-item"><div class="meta-val">${ch || '—'}</div><div class="meta-lbl">Chapters found</div></div>
+    <div class="meta-item"><div class="meta-val">~${am} min</div><div class="meta-lbl">Est. Audio</div></div>
+    <div class="meta-item" style="flex:1;min-width:120px"><div class="meta-val" style="font-size:14px;font-family:var(--font-b)">${fileName}</div><div class="meta-lbl">File</div></div>
+  `;
+}
+
+// ─────────────────────────────────────────────
+// AUDIO SECTIONS
+// ─────────────────────────────────────────────
+function prepareAudio() {
+  const text = document.getElementById('textEditor').value.trim();
+  if (!text) { toast('No text to prepare'); return; }
+  bookText = text;
+  sections = splitSections(text);
+  renderSecs();
+  document.getElementById('secWrap').classList.remove('hidden');
+  document.getElementById('listenEmpty').classList.add('hidden');
+  document.getElementById('secCount').textContent = sections.length + ' Sections';
+  document.getElementById('plName').textContent = fileName;
+  document.getElementById('plSub').textContent  = sections.length + ' sections — click Generate or ⚡ Generate All';
+  document.getElementById('fsBook').textContent = fileName;
+  showTab('listen', document.querySelectorAll('.tab')[1]);
+  toast(sections.length + ' sections ready');
+}
+
+function splitSections(text) {
+  // Try chapter-level split
+  let parts = text.split(/(?=(?:अध्याय\s*[\d।]+|Chapter\s+\d+|CHAPTER\s+\d+))/gi).filter(p => p.trim());
+  if (parts.length <= 1) parts = [text];
+
+  const result = [];
+  for (const part of parts) {
+    const chunks = chunkText(part, CHUNK_SZ * 2);
+    for (const c of chunks)
+      result.push({ text: c.trim(), blob: null, url: null, status: 'pending' });
+  }
+  return result.filter(s => s.text.length > 20);
+}
+
+function chunkText(text, max) {
+  if (text.length <= max) return [text];
+  const out = [];
+  let cur = '';
+  const sents = text.split(/(?<=[।.!?])\s+/);
+  for (const s of sents) {
+    if (cur.length + s.length > max && cur) { out.push(cur.trim()); cur = ''; }
+    cur += s + ' ';
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out.length ? out : [text.substring(0, max)];
+}
+
+function renderSecs() {
+  const list = document.getElementById('secList');
+  list.innerHTML = '';
+  sections.forEach((sec, i) => {
+    const el = document.createElement('div');
+    el.className = 'sec-item' + (i === curIdx ? ' on' : '');
+    el.id = 'si' + i;
+    el.innerHTML = `
+      <span class="sec-num">${i+1}</span>
+      <span class="sec-preview">${sec.text.substring(0,80).replace(/</g,'&lt;')}…</span>
+      <span class="sec-badge ${sec.status === 'ready' ? 'ready' : sec.status === 'loading' ? 'loading' : ''}" id="sb${i}">
+        ${sec.status === 'ready' ? '✓ Ready' : sec.status === 'loading' ? '⏳' : sec.status === 'err' ? '⚠ Error' : '—'}
+      </span>
+      <div class="sec-acts" id="sa${i}">
+        ${sec.status !== 'ready' ? `<button class="btn btn-o btn-s" id="sgb${i}" onclick="genSec(${i})">Generate</button>` : ''}
+        ${sec.status === 'ready' ? `<button class="btn btn-o btn-s" onclick="dlSec(${i})">↓</button>` : ''}
+      </div>`;
+    el.querySelector('.sec-preview').addEventListener('click', () => playSec(i));
+    list.appendChild(el);
+  });
+}
+
+function refreshSecUI(i) {
+  const sec = sections[i];
+  const sb = document.getElementById('sb' + i);
+  const sa = document.getElementById('sa' + i);
+  if (!sb) return;
+  sb.textContent  = sec.status === 'ready' ? '✓ Ready' : sec.status === 'loading' ? '⏳ Generating…' : sec.status === 'err' ? '⚠ Error' : '—';
+  sb.className    = 'sec-badge' + (sec.status === 'ready' ? ' ready' : sec.status === 'loading' ? ' loading' : sec.status === 'err' ? ' err' : '');
+  if (sa) {
+    sa.innerHTML = '';
+    if (sec.status !== 'ready') {
+      const gb = document.createElement('button');
+      gb.className = 'btn btn-o btn-s';
+      gb.id = 'sgb' + i;
+      gb.textContent = sec.status === 'loading' ? '…' : 'Generate';
+      gb.disabled = sec.status === 'loading';
+      gb.onclick = () => genSec(i);
+      sa.appendChild(gb);
+    } else {
+      const db = document.createElement('button');
+      db.className = 'btn btn-o btn-s';
+      db.textContent = '↓';
+      db.onclick = () => dlSec(i);
+      sa.appendChild(db);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// TTS GENERATION
+// ─────────────────────────────────────────────
+async function genSec(i) {
+  if (sections[i].status === 'loading') return;
+  sections[i].status = 'loading';
+  refreshSecUI(i);
+
+  const voice  = document.getElementById('voiceSel').value;
+  const chunks = chunkText(sections[i].text, CHUNK_SZ);
+  const bufs   = [];
+
+  try {
+    for (let c = 0; c < chunks.length; c++) {
+      const r = await fetch(TTS_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: TTS_MODEL, input: chunks[c], voice, response_format: 'mp3' })
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error?.message || 'HTTP ' + r.status);
+      }
+      bufs.push(await r.arrayBuffer());
+    }
+
+    // Concatenate MP3 buffers
+    const total = bufs.reduce((s,b) => s + b.byteLength, 0);
+    const arr   = new Uint8Array(total);
+    let off = 0;
+    for (const b of bufs) { arr.set(new Uint8Array(b), off); off += b.byteLength; }
+
+    sections[i].blob   = new Blob([arr], { type: 'audio/mpeg' });
+    sections[i].url    = URL.createObjectURL(sections[i].blob);
+    sections[i].status = 'ready';
+    refreshSecUI(i);
+
+    if (curIdx === i && !playing) playSec(i);
+  } catch(e) {
+    sections[i].status = 'err';
+    refreshSecUI(i);
+    toast('TTS Error: ' + e.message);
+    console.error(e);
+  }
+}
+
+async function genAll() {
+  const pending = sections.filter(s => s.status !== 'ready' && s.status !== 'loading');
+  if (!pending.length) { toast('All sections already generated!'); return; }
+  toast('Generating all sections… This may take a while ⏳');
+  for (let i = 0; i < sections.length; i++) {
+    if (sections[i].status !== 'ready') {
+      await genSec(i);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+  toast('All sections done! ✓');
+}
+
+// ─────────────────────────────────────────────
+// PLAYER
+// ─────────────────────────────────────────────
+function playSec(i) {
+  if (i < 0 || i >= sections.length) return;
+  curIdx = i;
+  document.querySelectorAll('.sec-item').forEach((el, idx) => el.classList.toggle('on', idx === i));
+
+  const sec = sections[i];
+  document.getElementById('plName').textContent = `Section ${i+1} of ${sections.length}`;
+  document.getElementById('plSub').textContent  = sec.text.substring(0, 70) + '…';
+  document.getElementById('fsSec').textContent  = `Section ${i+1} of ${sections.length}`;
+  document.getElementById('fsTxt').textContent  = sec.text.substring(0, 220) + (sec.text.length > 220 ? '…' : '');
+
+  if (sec.status !== 'ready') {
+    document.getElementById('plSub').textContent = 'Generating audio…';
+    genSec(i).then(() => { if (curIdx === i) playSec(i); });
+    return;
+  }
+
+  aud.src            = sec.url;
+  aud.playbackRate   = speed;
+  aud.play();
+  playing = true;
+  syncPlayBtn();
+}
+
+function togglePlay() {
+  if (curIdx === -1) { if (sections.length > 0) playSec(0); return; }
+  if (playing) { aud.pause(); playing = false; }
+  else         { aud.play(); playing = true; }
+  syncPlayBtn();
+}
+
+function onEnded() {
+  if (curIdx < sections.length - 1) playSec(curIdx + 1);
+  else { playing = false; syncPlayBtn(); }
+}
+
+function nextSec() { if (curIdx < sections.length - 1) playSec(curIdx + 1); }
+function prevSec() { if (curIdx > 0) playSec(curIdx - 1); }
+function skip(s)   { aud.currentTime = Math.max(0, Math.min(aud.currentTime + s, aud.duration || 0)); }
+
+function setSpd(s) {
+  speed            = s;
+  aud.playbackRate = s;
+  document.querySelectorAll('.sp').forEach(b => {
+    b.classList.toggle('on', parseFloat(b.textContent) === s);
+  });
+}
+
+function onTick() {
+  if (!aud.duration) return;
+  document.getElementById('aFill').style.width = (aud.currentTime / aud.duration * 100) + '%';
+}
+
+function seekAudio(e) {
+  if (!aud.duration) return;
+  const bar  = document.getElementById('aBar');
+  const rect = bar.getBoundingClientRect();
+  aud.currentTime = ((e.clientX - rect.left) / rect.width) * aud.duration;
+}
+
+function syncPlayBtn() {
+  const ico = playing ? '⏸' : '▶';
+  document.getElementById('playBtn').textContent  = ico;
+  document.getElementById('fsPBtn').textContent   = ico;
+}
+
+// ─────────────────────────────────────────────
+// DOWNLOADS
+// ─────────────────────────────────────────────
+function dlSec(i) {
+  const s = sections[i];
+  if (!s.blob) { toast('Not generated yet'); return; }
+  const a = document.createElement('a');
+  a.href     = s.url;
+  a.download = `${fileName.replace(/\.[^.]+$/, '')}_sec${i+1}.mp3`;
+  a.click();
+}
+
+function dlAll() {
+  const ready = sections.filter(s => s.status === 'ready');
+  if (!ready.length) { toast('No sections generated yet'); return; }
+  ready.forEach((s, i) => {
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href     = s.url;
+      a.download = `${fileName.replace(/\.[^.]+$/, '')}_sec${sections.indexOf(s)+1}.mp3`;
+      a.click();
+    }, i * 600);
+  });
+  toast(`Downloading ${ready.length} MP3 files…`);
+}
+
+function dlTxt() {
+  const t = document.getElementById('textEditor').value;
+  const a = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([t], { type: 'text/plain;charset=utf-8' }));
+  a.download = fileName.replace(/\.[^.]+$/, '') + '.txt';
+  a.click();
+}
+
+function copyTxt() {
+  navigator.clipboard.writeText(document.getElementById('textEditor').value);
+  toast('Copied to clipboard!');
+}
+
+// ─────────────────────────────────────────────
+// AI CHAT
+// ─────────────────────────────────────────────
+async function sendChat() {
+  const inp = document.getElementById('chatInp');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = '';
+  await qa(msg);
+}
+
+async function qa(question) {
+  const log = document.getElementById('chatLog');
+  showTab('ask', document.querySelectorAll('.tab')[2]);
+
+  const ud = document.createElement('div');
+  ud.className = 'msg u';
+  ud.textContent = question;
+  log.appendChild(ud);
+
+  const td = document.createElement('div');
+  td.className = 'msg a typing';
+  td.textContent = '…';
+  log.appendChild(td);
+  log.scrollTop = log.scrollHeight;
+
+  const t    = document.getElementById('textEditor').value;
+  const ctx  = t.length > 14000 ? t.substring(0, 14000) + '\n\n[…truncated]' : t;
+
+  try {
+    const r = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        max_tokens: 1200,
+        messages: [
+          { role: 'system', content: `You are a helpful book assistant. The user has uploaded a book named "${fileName}". Answer their questions about it clearly and helpfully. Here is the book content:\n\n${ctx}` },
+          { role: 'user', content: question }
+        ]
+      })
+    });
+    const data = await r.json();
+    td.className = 'msg a';
+    td.textContent = data.choices?.[0]?.message?.content || 'No response.';
+  } catch(e) {
+    td.className = 'msg a';
+    td.textContent = 'Error: ' + e.message;
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+// ─────────────────────────────────────────────
+// FULLSCREEN
+// ─────────────────────────────────────────────
+function openFS()  { document.getElementById('fsOverlay').classList.add('on'); }
+function closeFS() { document.getElementById('fsOverlay').classList.remove('on'); }
+
+// ─────────────────────────────────────────────
+// RESET
+// ─────────────────────────────────────────────
+function newBook() {
+  if (!confirm('Load a new book? Current progress will be lost.')) return;
+  bookText = ''; fileName = ''; sections = []; curIdx = -1; playing = false;
+  aud.src = '';
+  document.getElementById('textEditor').value = '';
+  document.getElementById('chatLog').innerHTML = '<div class="msg a">नमस्ते! Upload your book and I\'ll answer anything about it 📚</div>';
+  document.getElementById('fi').value = '';
+  syncPlayBtn();
+  setView('upload');
+}
+
+// ─────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────
+let toastTimer;
+function toast(msg, dur = 3200) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), dur);
+}
+
+// Live text meta update
+document.getElementById('textEditor').addEventListener('input', updateMeta);
+</script>
+</body>
+</html>
